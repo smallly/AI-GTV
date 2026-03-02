@@ -32,11 +32,14 @@ import {
   Play,
   Menu,
   VolumeX,
-  Upload
+  Upload,
+  X
 } from 'lucide-react';
 import { User, Project, Plan, ChatMessage } from './types';
 import { processNLU } from './services/nluService';
 import { analyzeProject, getDrillFeedback, getChatResponse } from './services/geminiService';
+
+type RecordingScenario = 'all_connected' | 'gtv_only' | 'unbound_gtv';
 
 // --- Components ---
 
@@ -148,7 +151,7 @@ const HistorySidebar = ({
           <div className="p-4 border-t border-slate-50">
             <button 
               onClick={() => {
-                onSelectSession({ messages: [{ role: 'assistant', content: '你好！我是你的AI金牌经纪人。今天有什么我可以帮你的吗？' }] });
+                onSelectSession({ messages: [] });
                 onClose();
               }}
               className="w-full py-3 bg-indigo-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
@@ -176,9 +179,7 @@ export default function App() {
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: '你好！我是你的AI金牌经纪人。今天有什么我可以帮你的吗？你可以跟我聊聊你的项目，或者我们来一场模拟演练。' }
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -195,13 +196,14 @@ export default function App() {
   const [isBindingLoading, setIsBindingLoading] = useState(false);
   const [isBindingError, setIsBindingError] = useState(false);
   const [isBindingDemo, setIsBindingDemo] = useState(false);
+  const [isScenarioPickerOpen, setIsScenarioPickerOpen] = useState(false);
+  const [recordingScenario, setRecordingScenario] = useState<RecordingScenario>('all_connected');
   const [sessions, setSessions] = useState<{id: string, title: string, date: string, messages: ChatMessage[]}[]>([
     {
       id: '1',
       title: '关于芯动科技的拜访计划',
       date: '2024-02-27',
       messages: [
-        { role: 'assistant', content: '你好！我是你的AI金牌经纪人。' },
         { role: 'user', content: '帮我制定一个拜访芯动科技的计划' },
         { role: 'assistant', content: '好的，根据芯动科技的情况，我建议...' }
       ]
@@ -211,7 +213,6 @@ export default function App() {
       title: '房源匹配咨询',
       date: '2024-02-26',
       messages: [
-        { role: 'assistant', content: '你好！我是你的AI金牌经纪人。' },
         { role: 'user', content: '新余高新区有合适的厂房吗？' },
         { role: 'assistant', content: '有的，目前有以下几个推荐...' }
       ]
@@ -222,7 +223,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (messages.length > 1) {
+    if (messages.length > 0) {
       scrollToBottom();
     }
   }, [messages]);
@@ -282,6 +283,23 @@ export default function App() {
     }
   };
 
+  const closeProjectSelection = () => {
+    setIsProjectSelectionView(false);
+    setProjectSearch('');
+  };
+
+  const openRecordingScenarioPicker = () => {
+    setIsScenarioPickerOpen(true);
+  };
+
+  const enterProjectSelectionWithScenario = (scenario: RecordingScenario) => {
+    setRecordingScenario(scenario);
+    setIsScenarioPickerOpen(false);
+    setProjectSearch('');
+    setVisibleProjectCount(10);
+    setIsProjectSelectionView(true);
+  };
+
   const handleSend = async (customInput?: string) => {
     const text = customInput || input;
     if (!text.trim() || !user) return;
@@ -293,7 +311,7 @@ export default function App() {
 
     try {
       if (text === '开启AI录音') {
-        setIsProjectSelectionView(true);
+        openRecordingScenarioPicker();
         setLoading(false);
         return;
       }
@@ -494,6 +512,7 @@ export default function App() {
     setIsBindingLoading(true);
     await new Promise(resolve => setTimeout(resolve, 800));
     setUser({ ...user, crm_bound: true });
+    setRecordingScenario('all_connected');
     setIsBindingView(false);
     setBindingPhone('');
     setBindingSmsCode('');
@@ -520,10 +539,7 @@ export default function App() {
             className="fixed inset-0 z-50 bg-[#FAFAFA] flex flex-col"
           >
             <header className="flex items-center justify-between px-4 py-4 border-b border-slate-50">
-              <button onClick={() => {
-                setIsProjectSelectionView(false);
-                setProjectSearch('');
-              }} className="p-2 text-slate-600">
+              <button onClick={closeProjectSelection} className="p-2 text-slate-600">
                 <ChevronLeft size={24} />
               </button>
               <h2 className="font-bold text-slate-800">选择项目</h2>
@@ -566,7 +582,7 @@ export default function App() {
                           setIsProjectSelectionView(false);
                           setIsRecordingView(true);
                         } else {
-                          setToast('已有录音进行中，请结束后再开始新录音');
+                          setToast('已有进行中的录音，请结束后再开启新录音');
                           setTimeout(() => setToast(null), 2000);
                         }
                       } else {
@@ -624,6 +640,84 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            <AnimatePresence>
+              {recordingScenario === 'unbound_gtv' && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 bg-black/35 backdrop-blur-sm z-20"
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                    className="absolute left-4 right-4 top-1/2 -translate-y-1/2 bg-white rounded-3xl p-5 z-30 shadow-2xl"
+                  >
+                    <div className="relative mb-3 min-h-10 flex items-center justify-center">
+                      <button
+                        onClick={closeProjectSelection}
+                        className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"
+                      >
+                        <X size={18} />
+                      </button>
+                      <p className="text-base text-slate-500 text-center">未绑定GTV，无法开启A1录音</p>
+                    </div>
+                    <GTVBindingCard onBind={() => setIsBindingView(true)} isBound={false} />
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {recordingScenario === 'gtv_only' && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 bg-black/35 backdrop-blur-sm z-20"
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                    className="absolute left-4 right-4 top-1/2 -translate-y-1/2 bg-white rounded-3xl p-5 z-30 shadow-2xl"
+                  >
+                    <div className="relative mb-3 min-h-10 flex items-center justify-center">
+                      <button
+                        onClick={closeProjectSelection}
+                        className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"
+                      >
+                        <X size={18} />
+                      </button>
+                      <h3 className="text-[22px] leading-snug font-semibold text-slate-900 text-center px-10">
+                        设备未连接，无法开启录音
+                      </h3>
+                    </div>
+                    <p className="text-[14px] leading-7 text-slate-500 text-center mb-4">
+                      设备未连接，无法在线开启录音。请先连接设备或长按设备录音键2秒抬手开始录音。
+                    </p>
+                    <div className="bg-slate-50 rounded-3xl p-4 mb-4 border border-slate-100">
+                      <div className="h-14 bg-slate-100 rounded-full flex items-center justify-center mb-3">
+                        <div className="w-12 h-12 rounded-full border-[3px] border-blue-400 bg-white flex items-center justify-center text-blue-500">
+                          <Mic size={20} />
+                        </div>
+                      </div>
+                      <p className="text-center text-slate-500 text-[14px] leading-6">长按录音键2秒后抬手开始录音</p>
+                    </div>
+                    <button
+                      onClick={closeProjectSelection}
+                      className="w-full py-3 rounded-full bg-blue-50 text-blue-600 text-lg font-semibold"
+                    >
+                      确定
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
 
@@ -865,11 +959,11 @@ export default function App() {
         <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-[#FAFAFA] sticky top-0 z-30 border-b border-slate-50">
           <button 
             onClick={() => {
-              setMessages(prev => prev.slice(0, 1));
+              setMessages([]);
               setIsDrilling(false);
               setCurrentDrillProject(null);
             }} 
-            className={`p-2 -ml-2 text-slate-600 transition-opacity ${messages.length <= 1 ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+            className={`p-2 -ml-2 text-slate-600 transition-opacity ${messages.length <= 0 ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
           >
             <ChevronLeft size={24} />
           </button>
@@ -897,7 +991,7 @@ export default function App() {
         </header>
 
         <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full overflow-hidden relative bg-[#FAFAFA]">
-          {messages.length <= 1 ? (
+          {messages.length <= 0 ? (
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
               {/* Hero Section */}
               <div className="relative pt-4 pb-2">
@@ -1036,7 +1130,7 @@ export default function App() {
             {/* Bottom Quick Actions */}
             <div className="flex gap-2 mb-3">
               <button
-                onClick={() => setIsProjectSelectionView(true)}
+                onClick={openRecordingScenarioPicker}
                 className="bg-white px-4 py-2 rounded-full text-xs font-medium text-slate-600 shadow-sm border border-slate-100 flex items-center gap-1.5 active:scale-95 transition-all"
               >
                 <Mic size={14} className="text-indigo-500" /> 开启AI录音
@@ -1084,6 +1178,58 @@ export default function App() {
           </div>
         </div>
       </main>
+      <AnimatePresence>
+        {isScenarioPickerOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsScenarioPickerOpen(false)}
+              className="fixed inset-0 bg-black/35 backdrop-blur-sm z-[80]"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              className="fixed left-4 right-4 top-1/2 -translate-y-1/2 bg-white rounded-3xl p-5 z-[90] shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-900">选择录音场景</h3>
+                <button
+                  onClick={() => setIsScenarioPickerOpen(false)}
+                  className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={() => enterProjectSelectionWithScenario('all_connected')}
+                  className="w-full p-3 rounded-2xl border border-slate-200 text-left hover:bg-slate-50 transition-colors"
+                >
+                  <p className="text-sm font-semibold text-slate-900">1. GTV、A1都已连接</p>
+                  <p className="text-xs text-slate-500 mt-1">可直接进入项目列表并开启录音</p>
+                </button>
+                <button
+                  onClick={() => enterProjectSelectionWithScenario('gtv_only')}
+                  className="w-full p-3 rounded-2xl border border-slate-200 text-left hover:bg-slate-50 transition-colors"
+                >
+                  <p className="text-sm font-semibold text-slate-900">2. 已绑定GTV，且A1未连接</p>
+                  <p className="text-xs text-slate-500 mt-1">在项目列表展示设备未连接提示</p>
+                </button>
+                <button
+                  onClick={() => enterProjectSelectionWithScenario('unbound_gtv')}
+                  className="w-full p-3 rounded-2xl border border-slate-200 text-left hover:bg-slate-50 transition-colors"
+                >
+                  <p className="text-sm font-semibold text-slate-900">3. 未绑定GTV</p>
+                  <p className="text-xs text-slate-500 mt-1">在项目列表展示GTV授权提示</p>
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
       {/* Toast Notification */}
       <AnimatePresence>
         {toast && (
