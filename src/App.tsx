@@ -40,6 +40,7 @@ import { processNLU } from './services/nluService';
 import { analyzeProject, getDrillFeedback, getChatResponse } from './services/geminiService';
 
 type RecordingScenario = 'all_connected' | 'gtv_only' | 'unbound_gtv';
+const heroImage = new URL('../images/IP.png', import.meta.url).href;
 
 // --- Components ---
 
@@ -1008,9 +1009,9 @@ export default function App() {
                 {/* 3D Avatar Placeholder */}
                 <div className="absolute right-0 top-0 w-20 h-28 pointer-events-none">
                   <img 
-                    src="https://picsum.photos/seed/workspace/400/600" 
+                    src={heroImage}
                     alt="AI Broker" 
-                    className="w-full h-full object-cover rounded-3xl opacity-90 shadow-2xl"
+                    className="w-full h-full object-contain opacity-95 drop-shadow-lg"
                     referrerPolicy="no-referrer"
                   />
                 </div>
