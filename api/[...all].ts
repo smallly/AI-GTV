@@ -170,6 +170,13 @@ function parseUserId(value: unknown): number {
   return Number.isFinite(id) ? id : 0;
 }
 
+function normalizeUser(user: Record<string, any>) {
+  return {
+    ...user,
+    crm_bound: Boolean(user.crm_bound),
+  };
+}
+
 initDb();
 
 const app = express();
@@ -205,7 +212,34 @@ app.post("/api/auth/login", (req, res) => {
     };
   }
 
-  res.json({ user });
+  res.json({ user: normalizeUser(user) });
+});
+
+app.post("/api/auth/bind-gtv", (req, res) => {
+  const userId = parseUserId(req.body?.userId);
+  const nextBound = req.body?.crm_bound ? 1 : 0;
+  if (!userId) {
+    res.status(400).json({ error: "userId is required" });
+    return;
+  }
+
+  db.prepare("UPDATE users SET crm_bound = ? WHERE id = ?").run(nextBound, userId);
+  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as
+    | {
+        id: number;
+        email: string;
+        name: string;
+        phone: string | null;
+        crm_bound: number;
+      }
+    | undefined;
+
+  if (!user) {
+    res.status(404).json({ error: "user not found" });
+    return;
+  }
+
+  res.json({ user: normalizeUser(user) });
 });
 
 app.get("/api/projects", (req, res) => {

@@ -119,6 +119,19 @@ if (true) { // Force update for demo
   }
 }
 
+function parseUserId(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeUser(user: any) {
+  if (!user) return user;
+  return {
+    ...user,
+    crm_bound: Boolean(user.crm_bound),
+  };
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3300;
@@ -173,7 +186,24 @@ async function startServer() {
       const info = db.prepare("INSERT INTO users (email, name) VALUES (?, ?)").run(email, email.split('@')[0]);
       user = { id: info.lastInsertRowid, email, name: email.split('@')[0] };
     }
-    res.json({ user });
+    res.json({ user: normalizeUser(user) });
+  });
+
+  app.post("/api/auth/bind-gtv", (req, res) => {
+    const userId = parseUserId(req.body?.userId);
+    const nextBound = req.body?.crm_bound ? 1 : 0;
+    if (!userId) {
+      res.status(400).json({ error: "userId is required" });
+      return;
+    }
+
+    db.prepare("UPDATE users SET crm_bound = ? WHERE id = ?").run(nextBound, userId);
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+    if (!user) {
+      res.status(404).json({ error: "user not found" });
+      return;
+    }
+    res.json({ user: normalizeUser(user) });
   });
 
   // Projects
