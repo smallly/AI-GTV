@@ -28,8 +28,6 @@ import {
   Keyboard,
   TrendingUp,
   LayoutGrid,
-  Pause,
-  Play,
   Menu,
   VolumeX,
   Upload,
@@ -453,13 +451,13 @@ const TranscriptionCard = () => (
       </motion.div>
     </div>
     <div className="flex-1">
-      <p className="text-sm font-bold text-slate-800">录音转写上传中...</p>
-      <p className="text-[11px] text-slate-400 mt-0.5">AI 正在为您解析对话内容，请稍候</p>
+      <p className="text-sm font-bold text-slate-800">录音中</p>
+      <p className="text-[11px] text-slate-400 mt-0.5">正在录音中...</p>
     </div>
   </div>
 );
 
-const RecordingAnalysisCard = ({ metadata }: { metadata: any }) => {
+const RecordingAnalysisCard = ({ metadata, onLinkProject }: { metadata: any; onLinkProject: () => void }) => {
   const sourceLabel = metadata?.source === 'upload' ? '本地录音分析' : 'A1录音分析';
   const analysisTime = metadata?.analysisTime || '2025-09-15 14:22:53';
   const projectName = metadata?.projectName || '未关联项目';
@@ -497,7 +495,17 @@ const RecordingAnalysisCard = ({ metadata }: { metadata: any }) => {
 
       <div className="mt-3 rounded-xl bg-white/85 border border-slate-100 p-3">
         <p className="text-[13px] text-slate-500 mb-1">关联项目</p>
-        <p className="text-[14px] font-semibold text-slate-800 leading-snug">{projectName}{projectCode}</p>
+        {hasLinkedProject ? (
+          <p className="text-[14px] font-semibold text-slate-800 leading-snug">{projectName}{projectCode}</p>
+        ) : null}
+        {!hasLinkedProject ? (
+          <button
+            onClick={onLinkProject}
+            className="mt-2 inline-flex items-center rounded-full bg-indigo-600 px-3 py-1.5 text-[12px] font-medium text-white shadow-sm active:scale-95 transition-all"
+          >
+            去关联项目
+          </button>
+        ) : null}
       </div>
 
       <div className="mt-3 rounded-xl bg-white/85 border border-slate-100 p-3">
@@ -588,8 +596,10 @@ export default function App() {
   const [isKeyboardMode, setIsKeyboardMode] = useState(false);
   const [isRecordingView, setIsRecordingView] = useState(false);
   const [isRecordingActive, setIsRecordingActive] = useState(false);
-  const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [isProjectSelectionView, setIsProjectSelectionView] = useState(false);
+  const [isBindingProjectMode, setIsBindingProjectMode] = useState(false);
+  const [bindingTargetMessageId, setBindingTargetMessageId] = useState<number | null>(null);
+  const [pendingBindingProjectId, setPendingBindingProjectId] = useState<number | null>(null);
   const [projectSearch, setProjectSearch] = useState('');
   const [visibleProjectCount, setVisibleProjectCount] = useState(10);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -676,13 +686,13 @@ export default function App() {
 
   useEffect(() => {
     let interval: any;
-    if (isRecordingActive && !isRecordingPaused) {
+    if (isRecordingActive) {
       interval = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isRecordingActive, isRecordingPaused]);
+  }, [isRecordingActive]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -713,9 +723,56 @@ export default function App() {
   const closeProjectSelection = () => {
     setIsProjectSelectionView(false);
     setProjectSearch('');
+    setIsBindingProjectMode(false);
+    setBindingTargetMessageId(null);
+    setPendingBindingProjectId(null);
+  };
+
+  const openProjectSelection = (messageId: number) => {
+    setRecordingScenario('all_connected');
+    setProjectSearch('');
+    setVisibleProjectCount(10);
+    setIsBindingProjectMode(true);
+    setBindingTargetMessageId(messageId);
+    setPendingBindingProjectId(null);
+    setIsScenarioPickerOpen(true);
+  };
+
+  const confirmProjectBinding = () => {
+    if (recordingScenario === 'unbound_gtv') {
+      setRecordingScenario('unbound_gtv');
+      return;
+    }
+    if (!bindingTargetMessageId || !pendingBindingProjectId) return;
+    const project = projects.find((p) => p.id === pendingBindingProjectId);
+    if (!project) return;
+
+    const displayProjectName = getDisplayProjectName(project.name);
+    const projectCode = `XM211023${project.id.toString().padStart(4, '0')}`;
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === bindingTargetMessageId && message.type === 'recording_analysis'
+          ? {
+              ...message,
+              metadata: {
+                ...(message.metadata || {}),
+                projectName: displayProjectName,
+                projectCode,
+              },
+            }
+          : message
+      )
+    );
+    setToast('已关联项目');
+    setTimeout(() => setToast(null), 1500);
+    closeProjectSelection();
   };
 
   const openRecordingScenarioPicker = () => {
+    if (isRecordingActive && !selectedProjectId) {
+      setIsRecordingView(true);
+      return;
+    }
     setIsScenarioPickerOpen(true);
   };
 
@@ -724,6 +781,14 @@ export default function App() {
     setIsScenarioPickerOpen(false);
     setProjectSearch('');
     setVisibleProjectCount(10);
+    if (!isBindingProjectMode && scenario === 'unbound_gtv') {
+      setSelectedProjectId(null);
+      setIsRecordingActive(false);
+      setRecordingTime(0);
+      setIsProjectSelectionView(false);
+      setIsRecordingView(true);
+      return;
+    }
     setIsProjectSelectionView(true);
   };
 
@@ -969,6 +1034,7 @@ export default function App() {
     const file = event.target.files?.[0];
     if (file) {
       setToast(`已选择文件: ${file.name}，正在上传并分析...`);
+      setTimeout(() => setToast(null), 1800);
       const transcriptionMsgId = Date.now();
       setMessages(prev => [...prev, {
         id: transcriptionMsgId,
@@ -998,6 +1064,7 @@ export default function App() {
               }
             : m
         ));
+        setToast(null);
       }, 2000);
     }
     event.target.value = '';
@@ -1143,7 +1210,7 @@ export default function App() {
               <button onClick={closeProjectSelection} className="p-2 text-slate-600">
                 <ChevronLeft size={24} />
               </button>
-              <h2 className="font-bold text-slate-800">选择项目</h2>
+              <h2 className="font-bold text-slate-800">{isBindingProjectMode ? '关联项目' : '选择项目'}</h2>
               <div className="w-10" />
             </header>
             
@@ -1174,10 +1241,16 @@ export default function App() {
                   )
               ).map((p) => {
                 const isCurrentRecording = isRecordingActive && selectedProjectId === p.id;
+                const isBindingSelected = isBindingProjectMode && pendingBindingProjectId === p.id;
+                const isRowSelected = isBindingProjectMode ? isBindingSelected : isCurrentRecording;
                 return (
                   <button 
                     key={p.id}
                     onClick={() => {
+                      if (isBindingProjectMode) {
+                        setPendingBindingProjectId((prev) => (prev === p.id ? null : p.id));
+                        return;
+                      }
                       if (isRecordingActive) {
                         if (selectedProjectId === p.id) {
                           setIsProjectSelectionView(false);
@@ -1192,13 +1265,12 @@ export default function App() {
                         setProjectSearch('');
                         setVisibleProjectCount(10);
                         setIsRecordingActive(false);
-                        setIsRecordingPaused(false);
                         setRecordingTime(0);
                         setIsRecordingView(true);
                       }
                     }}
                     className={`group w-full flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                      isCurrentRecording 
+                      isRowSelected
                         ? 'bg-indigo-50 border-indigo-200' 
                         : 'bg-white border-slate-200 shadow-sm active:bg-slate-50'
                     }`}
@@ -1217,12 +1289,30 @@ export default function App() {
                         XM211023{p.id.toString().padStart(4, '0')} · {p.stage} · {p.client_name}
                       </p>
                     </div>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                      isCurrentRecording 
-                        ? 'bg-indigo-600 text-white' 
-                        : 'bg-indigo-50 text-indigo-400 group-active:bg-indigo-100'
-                    }`}>
-                      <Mic size={16} />
+                    <div className="min-w-[64px] flex items-center justify-end">
+                      {isBindingProjectMode ? (
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                              isBindingSelected
+                                ? 'bg-indigo-600 border-2 border-indigo-600 shadow-sm shadow-indigo-200'
+                                : 'bg-white border-2 border-slate-300'
+                            }`}
+                          >
+                            {isBindingSelected ? (
+                              <span className="text-white text-[11px] leading-none font-bold">✓</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                          isCurrentRecording
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-indigo-50 text-indigo-400 group-active:bg-indigo-100'
+                        }`}>
+                          <Mic size={16} />
+                        </div>
+                      )}
                     </div>
                   </button>
                 );
@@ -1243,6 +1333,22 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {isBindingProjectMode && (
+              <div className="p-4 border-t border-slate-100 bg-[#FAFAFA]">
+                <button
+                  onClick={confirmProjectBinding}
+                  disabled={!pendingBindingProjectId}
+                  className={`w-full py-3 rounded-xl text-sm font-semibold transition-all ${
+                    pendingBindingProjectId
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 active:scale-[0.99]'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-80 pointer-events-none'
+                  }`}
+                >
+                  确认关联
+                </button>
+              </div>
+            )}
 
             <AnimatePresence>
               {recordingScenario === 'unbound_gtv' && (
@@ -1266,7 +1372,9 @@ export default function App() {
                       >
                         <X size={18} />
                       </button>
-                      <p className="text-base text-slate-500 text-center">未绑定GTV，无法开启A1录音</p>
+                      <p className="text-base text-slate-500 text-center">
+                        {isBindingProjectMode ? '未绑定GTV，请先授权后关联项目' : '未绑定GTV，无法开启A1录音'}
+                      </p>
                     </div>
                     <GTVBindingCard onBind={() => setIsBindingView(true)} isBound={false} />
                   </motion.div>
@@ -1337,7 +1445,7 @@ export default function App() {
                 <ChevronLeft size={24} />
               </button>
               <h2 className="font-bold text-slate-800">
-                {!isRecordingActive ? 'AI 录音准备' : isRecordingPaused ? '录音已暂停' : 'AI 录音中'}
+                {!isRecordingActive ? 'AI 录音准备' : 'AI 录音中'}
               </h2>
               <div className="w-10" />
             </header>
@@ -1345,7 +1453,7 @@ export default function App() {
             <div className="flex-1 flex flex-col items-center justify-center p-8">
               <div className="relative mb-12">
                 {/* Animated Waves */}
-                {isRecordingActive && !isRecordingPaused && [1, 2, 3].map((i) => (
+                {isRecordingActive && [1, 2, 3].map((i) => (
                   <motion.div
                     key={i}
                     animate={{
@@ -1360,7 +1468,7 @@ export default function App() {
                     className="absolute inset-0 bg-indigo-100 rounded-full"
                   />
                 ))}
-                <div className={`relative w-32 h-32 ${!isRecordingActive ? 'bg-slate-300' : isRecordingPaused ? 'bg-slate-400' : 'bg-indigo-600'} rounded-full flex items-center justify-center shadow-xl shadow-indigo-200 transition-colors`}>
+                <div className={`relative w-32 h-32 ${!isRecordingActive ? 'bg-slate-300' : 'bg-indigo-600'} rounded-full flex items-center justify-center shadow-xl shadow-indigo-200 transition-colors`}>
                   <Mic size={48} className="text-white" />
                 </div>
               </div>
@@ -1371,8 +1479,6 @@ export default function App() {
               <p className="text-slate-400 text-sm">
                 {!isRecordingActive
                   ? '点击下方按钮，手动开始录音'
-                  : isRecordingPaused
-                  ? '录音已暂停，点击下方按钮继续'
                   : '正在为您实时记录对话内容...'}
               </p>
             </div>
@@ -1382,30 +1488,18 @@ export default function App() {
                 <button
                   onClick={() => {
                     setIsRecordingActive(true);
-                    setIsRecordingPaused(false);
                   }}
                   className="w-full h-12 rounded-xl bg-indigo-600 text-white font-semibold text-base shadow-lg shadow-indigo-200 active:scale-[0.99] transition-all"
                 >
                   开始录音
                 </button>
               ) : (
-                <div className="flex items-center justify-center gap-12">
-                  <div className="flex flex-col items-center gap-2">
-                    <button 
-                      onClick={() => setIsRecordingPaused(!isRecordingPaused)}
-                      className={`w-16 h-16 ${isRecordingPaused ? 'bg-indigo-600' : 'bg-slate-100'} rounded-full flex items-center justify-center ${isRecordingPaused ? 'text-white' : 'text-slate-600'} shadow-lg active:scale-90 transition-all`}
-                    >
-                      {isRecordingPaused ? <Play size={28} fill="currentColor" /> : <Pause size={28} fill="currentColor" />}
-                    </button>
-                    <span className="text-xs text-slate-400 font-medium">{isRecordingPaused ? '继续' : '暂停'}</span>
-                  </div>
-
+                <div className="flex items-center justify-center">
                   <div className="flex flex-col items-center gap-2">
                     <button 
                       onClick={() => {
                         const projectId = selectedProjectId;
                         setIsRecordingActive(false);
-                        setIsRecordingPaused(false);
                         setIsRecordingView(false);
                         setRecordingTime(0);
                         
@@ -1728,7 +1822,10 @@ export default function App() {
                         {msg.type === 'transcription' ? (
                           <TranscriptionCard />
                         ) : msg.type === 'recording_analysis' ? (
-                          <RecordingAnalysisCard metadata={msg.metadata} />
+                          <RecordingAnalysisCard
+                            metadata={msg.metadata}
+                            onLinkProject={() => openProjectSelection(msg.id || Date.now())}
+                          />
                         ) : msg.role === 'assistant' && msg.content === propertyMatchMarkdown ? (
                           <PropertyMatchLayout />
                         ) : (
@@ -1919,7 +2016,9 @@ export default function App() {
               className="fixed left-4 right-4 top-1/2 -translate-y-1/2 bg-white rounded-3xl p-5 z-[90] shadow-2xl"
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-slate-900">选择录音场景</h3>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  {isBindingProjectMode ? '选择关联场景' : '选择录音场景'}
+                </h3>
                 <button
                   onClick={() => setIsScenarioPickerOpen(false)}
                   className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"
@@ -1928,27 +2027,41 @@ export default function App() {
                 </button>
               </div>
               <div className="space-y-2">
-                <button
-                  onClick={() => enterProjectSelectionWithScenario('all_connected')}
-                  className="w-full p-3 rounded-2xl border border-slate-200 text-left hover:bg-slate-50 transition-colors"
-                >
-                  <p className="text-sm font-semibold text-slate-900">1. GTV、A1都已连接</p>
-                  <p className="text-xs text-slate-500 mt-1">可直接进入项目列表并开启录音</p>
-                </button>
-                <button
-                  onClick={() => enterProjectSelectionWithScenario('gtv_only')}
-                  className="w-full p-3 rounded-2xl border border-slate-200 text-left hover:bg-slate-50 transition-colors"
-                >
-                  <p className="text-sm font-semibold text-slate-900">2. 已绑定GTV，且A1未连接</p>
-                  <p className="text-xs text-slate-500 mt-1">在项目列表展示设备未连接提示</p>
-                </button>
-                <button
-                  onClick={() => enterProjectSelectionWithScenario('unbound_gtv')}
-                  className="w-full p-3 rounded-2xl border border-slate-200 text-left hover:bg-slate-50 transition-colors"
-                >
-                  <p className="text-sm font-semibold text-slate-900">3. 未绑定GTV</p>
-                  <p className="text-xs text-slate-500 mt-1">在项目列表展示GTV授权提示</p>
-                </button>
+                {isBindingProjectMode ? (
+                  <>
+                    <button
+                      onClick={() => enterProjectSelectionWithScenario('all_connected')}
+                      className="w-full p-3 rounded-2xl border border-slate-200 text-left hover:bg-slate-50 transition-colors"
+                    >
+                      <p className="text-sm font-semibold text-slate-900">1. 已授权GTV账号</p>
+                      <p className="text-xs text-slate-500 mt-1">可直接进入项目列表并确认关联</p>
+                    </button>
+                    <button
+                      onClick={() => enterProjectSelectionWithScenario('unbound_gtv')}
+                      className="w-full p-3 rounded-2xl border border-slate-200 text-left hover:bg-slate-50 transition-colors"
+                    >
+                      <p className="text-sm font-semibold text-slate-900">2. 未授权GTV账号</p>
+                      <p className="text-xs text-slate-500 mt-1">在项目列表展示GTV授权提示</p>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => enterProjectSelectionWithScenario('all_connected')}
+                      className="w-full p-3 rounded-2xl border border-slate-200 text-left hover:bg-slate-50 transition-colors"
+                    >
+                      <p className="text-sm font-semibold text-slate-900">1. 有项目</p>
+                      <p className="text-xs text-slate-500 mt-1">进入项目列表，选择后开启A1录音</p>
+                    </button>
+                    <button
+                      onClick={() => enterProjectSelectionWithScenario('unbound_gtv')}
+                      className="w-full p-3 rounded-2xl border border-slate-200 text-left hover:bg-slate-50 transition-colors"
+                    >
+                      <p className="text-sm font-semibold text-slate-900">2. 无项目/未判定GTV账号</p>
+                      <p className="text-xs text-slate-500 mt-1">直接进入录音页面，支持后关联项目</p>
+                    </button>
+                  </>
+                )}
               </div>
             </motion.div>
           </>
