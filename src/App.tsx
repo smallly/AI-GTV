@@ -43,6 +43,7 @@ import { analyzeProject, getDrillFeedback, getChatResponse } from './services/ge
 
 type RecordingScenario = 'all_connected' | 'gtv_only' | 'unbound_gtv';
 const heroImage = new URL('../images/IP.png', import.meta.url).href;
+const PRODUCT_SERVICE_URL = (import.meta.env.VITE_CONTACT_PAGE_URL as string | undefined)?.trim() || '';
 
 const visitPlanMarkdown = `已为您制定好**2026年3月6日（明天）的项目拜访计划**。基于您当前负责的5个项目，结合客户意向强度、区域集中度及跟进紧迫性，采用“高优攻坚 + 区域聚类”策略，确保高效转化：
 
@@ -596,6 +597,7 @@ export default function App() {
   const [isKeyboardMode, setIsKeyboardMode] = useState(false);
   const [isRecordingView, setIsRecordingView] = useState(false);
   const [isRecordingActive, setIsRecordingActive] = useState(false);
+  const [isContactView, setIsContactView] = useState(false);
   const [isProjectSelectionView, setIsProjectSelectionView] = useState(false);
   const [isBindingProjectMode, setIsBindingProjectMode] = useState(false);
   const [bindingTargetMessageId, setBindingTargetMessageId] = useState<number | null>(null);
@@ -830,6 +832,12 @@ export default function App() {
   const handleSend = async (customInput?: string) => {
     const text = customInput || input;
     if (!text.trim() || !user) return;
+
+    if (text === '联系我们' || text === '产品服务群') {
+      handleContactUs();
+      setInput('');
+      return;
+    }
 
     const userMsg: ChatMessage = { role: 'user', content: text };
     setMessages(prev => [...prev, userMsg]);
@@ -1068,6 +1076,19 @@ export default function App() {
       }, 2000);
     }
     event.target.value = '';
+  };
+
+  const handleContactUs = () => {
+    setIsContactView(true);
+  };
+
+  const handleOpenProductService = () => {
+    if (!PRODUCT_SERVICE_URL) {
+      setToast('产品客服链接待配置');
+      setTimeout(() => setToast(null), 1800);
+      return;
+    }
+    window.location.href = PRODUCT_SERVICE_URL;
   };
 
   const handleBindGTV = async () => {
@@ -1689,43 +1710,96 @@ export default function App() {
       </AnimatePresence>
       <main className="flex-1 flex flex-col overflow-hidden relative">
         {/* Mobile Header */}
-        <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-[#FAFAFA] sticky top-0 z-30 border-b border-slate-200/70">
+        <header className="lg:hidden relative flex items-center justify-between px-4 py-3 bg-[#FAFAFA] sticky top-0 z-30 border-b border-slate-200/70">
           <button 
             onClick={() => {
+              if (isContactView) {
+                setIsContactView(false);
+                return;
+              }
               setMessages([]);
               setIsDrilling(false);
               setCurrentDrillProject(null);
               setIsPropertyMatchingScene(false);
             }} 
-            className={`p-2 -ml-2 text-slate-600 transition-opacity ${messages.length <= 0 ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+            className={`p-2 -ml-2 text-slate-600 transition-opacity ${messages.length <= 0 && !isContactView ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
           >
             <ChevronLeft size={24} />
           </button>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm">
-              <img src={heroImage} alt="Avatar" className="w-full h-full object-cover" />
+          {isContactView ? (
+            <div className="absolute left-1/2 -translate-x-1/2 font-bold text-slate-800 text-base">
+              联系我们
             </div>
-            <div className="font-bold text-slate-800 text-sm flex items-center gap-1">
-              AI金牌经纪人
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm">
+                <img src={heroImage} alt="Avatar" className="w-full h-full object-cover" />
+              </div>
+              <div className="font-bold text-slate-800 text-sm flex items-center gap-1">
+                AI金牌经纪人
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button className="p-2 text-slate-600"><VolumeX size={20} /></button>
-            {user?.crm_bound && (
-              <button
-                onClick={() => setUser(u => u ? { ...u, crm_bound: false } : u)}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 text-slate-500 text-[11px] font-medium hover:bg-red-50 hover:text-red-500 transition-colors"
-              >
-                <img src="/liyeyun-logo.png" className="w-3.5 h-3.5 object-contain" />
-                已授权
-              </button>
-            )}
-            <button className="p-2 text-slate-600" onClick={() => setIsHistoryOpen(true)}><Menu size={20} /></button>
-          </div>
+          )}
+          {!isContactView && (
+            <div className="flex items-center gap-1">
+              <button className="p-2 text-slate-600"><VolumeX size={20} /></button>
+              {user?.crm_bound && (
+                <button
+                  onClick={() => setUser(u => u ? { ...u, crm_bound: false } : u)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 text-slate-500 text-[11px] font-medium hover:bg-red-50 hover:text-red-500 transition-colors"
+                >
+                  <img src="/liyeyun-logo.png" className="w-3.5 h-3.5 object-contain" />
+                  已授权
+                </button>
+              )}
+              <button className="p-2 text-slate-600" onClick={() => setIsHistoryOpen(true)}><Menu size={20} /></button>
+            </div>
+          )}
         </header>
 
         <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full overflow-hidden relative bg-[#FAFAFA]">
-          {messages.length <= 0 ? (
+          {isContactView ? (
+            <div className="flex-1 overflow-y-auto px-4 pt-3 pb-6 custom-scrollbar">
+              <div className="rounded-[32px] border border-slate-200 bg-white px-5 py-5 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-[24px] font-bold text-[#7A4C11] leading-tight">产品服务群</h2>
+                    <div className="mt-5 space-y-3">
+                      <div className="flex items-center gap-3 text-[14px] text-slate-700">
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#F5B14C] text-white">
+                          <CheckCircle2 size={15} />
+                        </span>
+                        <span>1V1沟通</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-[14px] text-slate-700">
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#F5B14C] text-white">
+                          <CheckCircle2 size={15} />
+                        </span>
+                        <span>了解会员权益</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="shrink-0 rounded-[24px] bg-[#FFF3E2] px-4 py-4 shadow-sm">
+                    <div className="rounded-full bg-[#F4B35D] px-3 py-1 text-[12px] font-semibold text-white">
+                      1V1沟通
+                    </div>
+                    <div className="mt-3 flex items-center justify-end gap-2 text-[#F4B35D]">
+                      <MessageCircle size={26} fill="currentColor" strokeWidth={1.5} />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F9B7CC] text-white">
+                        <Sparkles size={18} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={handleOpenProductService}
+                  className="mt-5 w-full rounded-2xl bg-[#1677F0] px-4 py-3 text-[16px] font-semibold text-white shadow-lg shadow-blue-100 transition-colors hover:bg-[#0F67D4]"
+                >
+                  立即入群
+                </button>
+              </div>
+            </div>
+          ) : messages.length <= 0 ? (
             <div className="flex-1 overflow-y-auto px-4 pt-1 pb-4 custom-scrollbar">
               {/* Hero Section */}
               <div className="relative rounded-[30px] overflow-visible mb-5">
@@ -1947,6 +2021,7 @@ export default function App() {
           )}
 
           {/* Input Area */}
+          {!isContactView && (
           <div className="px-4 pt-1 pb-4">
             {/* Bottom Quick Actions */}
             <div className="flex gap-2 mb-3">
@@ -1957,7 +2032,7 @@ export default function App() {
                 <Mic size={14} className="text-slate-400" /> 开启AI录音
               </button>
               <button
-                onClick={() => handleSend('联系我们')}
+                onClick={handleContactUs}
                 className="bg-white px-4 py-2 rounded-full text-xs font-medium text-slate-600 shadow-sm border border-slate-100 flex items-center gap-1.5 active:scale-95 transition-all"
               >
                 <PhoneCall size={14} className="text-slate-400" /> 联系我们
@@ -1997,6 +2072,7 @@ export default function App() {
               </button>
             </div>
           </div>
+          )}
         </div>
       </main>
       <AnimatePresence>
